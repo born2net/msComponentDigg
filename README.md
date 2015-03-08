@@ -9,6 +9,6 @@ The Digg component is powered by the red pepper SDK and runs inside the SignageP
 
 License:
 ------------------------------------------------------------------------
-- GNU V3 modified for digitalsignage.com mediaCLOUD
+- License GNU V3 modified for use in mediaCLOUD only
 
 
