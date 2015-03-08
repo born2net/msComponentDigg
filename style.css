@@ -1,0 +1,12 @@
+@import url("_common/_js/bootstrap/css/bootstrap-glyphicons.css");
+
+html,
+body {
+    height: 100%;
+    background-color: #ffffff;
+}
+
+#posts {
+    font-size: 3em !important;
+}
+
