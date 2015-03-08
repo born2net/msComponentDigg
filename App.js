@@ -5,7 +5,7 @@
  @constructor
  @return {Object} instantiated App
  **/
-define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 'ComBroker', 'Lib', 'TweenLite', 'ScrollToPlugin', 'text!_templates/_diggEntry.html'], function (_, $, Backbone, Bootstrap, backbonecontroller, ComBroker, Lib, TweenLite, ScrollToPlugin, diggEntry) {
+define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 'ComBroker', 'Lib', 'TweenLite', 'ScrollToPlugin', 'visibility', 'text!_templates/_diggEntry.html'], function (_, $, Backbone, Bootstrap, backbonecontroller, ComBroker, Lib, TweenLite, ScrollToPlugin, visibility, diggEntry) {
     var App = Backbone.Controller.extend({
 
         // app init
@@ -24,6 +24,9 @@ define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 
             BB.comBroker = new ComBroker();
             BB.comBroker.name = 'AppBroker';
             window.log = BB.lib.log;
+            self.m_skip = false;
+            self.m_times = 0;
+            self.m_scrollPosition = 0;
             $.ajaxSetup({cache: false});
             $.ajaxSetup({
                 headers: {'Authorization': 'somePasswordHere'}
@@ -62,40 +65,44 @@ define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 
         _loadPosts: function () {
             var self = this;
 
-
             $.get('https://secure.digitalsignage.com/Digg', function (data) {
                 $('#loadingDigg').fadeOut();
                 var half = Math.round(_.size(data) / 2);
                 var i = 0;
                 var $win = $(window);
-                var times = 1;
-                var skip = false;
-
+                self.m_times = 1;
                 _.forEach(data, function (k) {
                     i++;
-                    var ele = (i > half) ?  '#diggsP1' : '#diggsP2';
+                    var ele = (i > half) ? '#diggsP1' : '#diggsP2';
                     $(ele).append(self.m_diggEntry(k));
                 });
 
                 setInterval(function () {
-                    if (skip)
+                    var currentPosition = $win.scrollTop();
+                    if (currentPosition == 0){
+                        self.m_skip = false;
+                        self.m_times = 1;
+                        self.m_scrollPosition = 0;
                         return;
-                    TweenLite.to(window, 2, {scrollTo: {y: times}, ease: Power2.easeOut});
-                    times = times + 10;
-                }, 500);
-
-
-                $win.scroll(function () {
-                    if ($win.scrollTop() == 0) {
-                        skip = false;
-                        // hit the top
-                    } else if ($win.height() + $win.scrollTop() == $(document).height()) {
-                        // hit the bottom
-                        skip = true;
-                        times = 0;
-                        TweenLite.to(window, 2, {scrollTo: {y: times}, ease: Power2.easeOut});
                     }
-                });
+                    if (currentPosition == self.m_scrollPosition){
+                        TweenLite.to(window, 2, {scrollTo: {y: 0}, ease: Power2.easeOut});
+                        self.m_skip = true;
+                        self.m_times = 1;
+                        self.m_scrollPosition = currentPosition;
+                        return;
+                    }
+                    self.m_scrollPosition = currentPosition;
+                }, 3000);
+
+                setInterval(function () {
+                    if (self.m_skip)
+                        return;
+                    TweenLite.to(window, 2, {scrollTo: {y: self.m_times}, ease: Power2.easeOut});
+                    self.m_times = self.m_times + 10;
+                }, 700);
+
+
             });
         }
     });

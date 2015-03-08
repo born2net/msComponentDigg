@@ -8,19 +8,6 @@
     <meta name="author" content="MediaSignage Inc.">
     <link rel="shortcut icon" href="favicon.ico">
     <title>SignageStudio Lite</title>
-    <script>
-        window.onerror = function (msg, url, line, col, error) {
-            if (window.debug == undefined || window.debug){
-                var extra = !col ? '' : '\ncolumn: ' + col;
-                extra += !error ? '' : '\nerror: ' + error;
-                alert("err 1: " + msg + "\nurl: " + url + "\nline: " + line + extra);
-                var suppressErrorAlert = true;
-                // If you return true, then error alerts (like in older versions of
-                // Internet Explorer) will be suppressed.
-                return suppressErrorAlert;
-            }
-        };
-    </script>
     <link href="//netdna.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.css" rel="stylesheet">
     <link href="_common/_js/bootstrap/css/bootstrap.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
@@ -33,14 +20,12 @@
 
 </head>
 <body>
-
 <div class="container-fluid" style="background-color:#e8e8e8">
     <div class="container container-pad" id="property-listings">
        <h1 id="loadingDigg">Loading Digg</h1>
         <div class="row">
             <div id="diggsP1" class="col-sm-6">
             </div>
-
             <div id="diggsP2" class="col-sm-6">
             </div>
         </div>

@@ -16,6 +16,7 @@ require.config({
         'platform': '_common/_js/platform/platform',
         'moment': '_common/_js/moment/moment',
         'Cookie': '_common/_js/cookie/jquery.cookie',
+        'visibility': '_common/_js/visibility/jquery.visible',
         'ComBroker': '_controllers/ComBroker',
         'XDate': '_common/_js/xdate/xdate',
         'simplestorage': '_common/_js/simplestorage/simpleStorage',
@@ -53,6 +54,10 @@ require.config({
         },
         'bootstrap': {
             deps: ['jquery']
+        },
+        'visibility': {
+            deps: ['jquery'],
+            exports: 'visibility'
         },
         'Cookie': {
             deps: ['jquery'],
