@@ -1,10 +1,10 @@
 /*!
- * VERSION: 1.13.0
- * DATE: 2014-07-17
+ * VERSION: 1.16.0
+ * DATE: 2015-03-01
  * UPDATES AND DOCS AT: http://www.greensock.com
  *
- * @license Copyright (c) 2008-2014, GreenSock. All rights reserved.
- * This work is subject to the terms at http://www.greensock.com/terms_of_use.html or for
+ * @license Copyright (c) 2008-2015, GreenSock. All rights reserved.
+ * This work is subject to the terms at http://greensock.com/standard-license or for
  * Club GreenSock members, the software agreement that was issued with your membership.
  * 
  * @author: Jack Doyle, jack@greensock.com
@@ -22,6 +22,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 				this._overwriteProps.length = 0;
 				this.setRatio = CSSPlugin.prototype.setRatio; //speed optimization (avoid prototype lookup on this "hot" method)
 			},
+			_globals = _gsScope._gsDefine.globals,
 			_hasPriority, //turns true whenever a CSSPropTween instance is created that has a priority other than 0. This helps us discern whether or not we should spend the time organizing the linked list or not after a CSSPlugin's _onInitTween() method is called.
 			_suffixMap, //we set this in _onInitTween() each time as a way to have a persistent variable we can use in other methods like _parse() without having to pass it around as a parameter and we keep _parse() decoupled from a particular CSSPlugin instance
 			_cs, //computed style (we store this in a shared variable to conserve memory and make minification tighter
@@ -30,7 +31,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			p = CSSPlugin.prototype = new TweenPlugin("css");
 
 		p.constructor = CSSPlugin;
-		CSSPlugin.version = "1.13.0";
+		CSSPlugin.version = "1.16.0";
 		CSSPlugin.API = 2;
 		CSSPlugin.defaultTransformPerspective = 0;
 		CSSPlugin.defaultSkewType = "compensated";
@@ -41,7 +42,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 		var _numExp = /(?:\d|\-\d|\.\d|\-\.\d)+/g,
 			_relNumExp = /(?:\d|\-\d|\.\d|\-\.\d|\+=\d|\-=\d|\+=.\d|\-=\.\d)+/g,
 			_valuesExp = /(?:\+=|\-=|\-|\b)[\d\-\.]+[a-zA-Z0-9]*(?:%|\b)/gi, //finds all the values that begin with numbers or += or -= and then a number. Includes suffixes. We use this to split complex values apart like "1px 5px 20px rgb(255,102,51)"
-			_NaNExp = /[^\d\-\.]/g,
+			_NaNExp = /(?![+-]?\d*\.?\d+|[+-]|e[+-]\d+)[^0-9]/g, //also allows scientific notation and doesn't kill the leading -/+ in -= and +=
 			_suffixExp = /(?:\d|\-|\+|=|#|\.)*/g,
 			_opacityExp = /opacity *= *([^)]*)/i,
 			_opacityValExp = /opacity:([^;]*)/i,
@@ -59,8 +60,11 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			_RAD2DEG = 180 / Math.PI,
 			_forcePT = {},
 			_doc = document,
-			_tempDiv = _doc.createElement("div"),
-			_tempImg = _doc.createElement("img"),
+			_createElement = function(type) {
+				return _doc.createElementNS ? _doc.createElementNS("http://www.w3.org/1999/xhtml", type) : _doc.createElement(type);
+			},
+			_tempDiv = _createElement("div"),
+			_tempImg = _createElement("img"),
 			_internals = CSSPlugin._internals = {_specialProps:_specialProps}, //provides a hook to a few internal methods that we need to access from inside other plugins
 			_agent = navigator.userAgent,
 			_autoRound,
@@ -72,19 +76,18 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			_ieVers,
 			_supportsOpacity = (function() { //we set _isSafari, _ieVers, _isFirefox, and _supportsOpacity all in one function here to reduce file size slightly, especially in the minified version.
 				var i = _agent.indexOf("Android"),
-					d = _doc.createElement("div"), a;
-
+					a = _createElement("a");
 				_isSafari = (_agent.indexOf("Safari") !== -1 && _agent.indexOf("Chrome") === -1 && (i === -1 || Number(_agent.substr(i+8, 1)) > 3));
 				_isSafariLT6 = (_isSafari && (Number(_agent.substr(_agent.indexOf("Version/")+8, 1)) < 6));
 				_isFirefox = (_agent.indexOf("Firefox") !== -1);
-
-				if ((/MSIE ([0-9]{1,}[\.0-9]{0,})/).exec(_agent)) {
+				if ((/MSIE ([0-9]{1,}[\.0-9]{0,})/).exec(_agent) || (/Trident\/.*rv:([0-9]{1,}[\.0-9]{0,})/).exec(_agent)) {
 					_ieVers = parseFloat( RegExp.$1 );
 				}
-
-				d.innerHTML = "<a style='top:1px;opacity:.55;'>a</a>";
-				a = d.getElementsByTagName("a")[0];
-				return a ? /^0.55/.test(a.style.opacity) : false;
+				if (!a) {
+					return false;
+				}
+				a.style.cssText = "top:1px;opacity:.55;";
+				return /^0.55/.test(a.style.opacity);
 			}()),
 			_getIEOpacity = function(v) {
 				return (_opacityExp.test( ((typeof(v) === "string") ? v : (v.currentStyle ? v.currentStyle.filter : v.style.filter) || "") ) ? ( parseFloat( RegExp.$1 ) / 100 ) : 1);
@@ -94,6 +97,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					console.log(s);
 				}
 			},
+
 			_prefixCSS = "", //the non-camelCase vendor prefix like "-o-", "-moz-", "-ms-", or "-webkit-"
 			_prefix = "", //camelCase vendor prefix like "O", "ms", "Webkit", or "Moz".
 
@@ -204,15 +208,20 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			// @private returns at object containing ALL of the style properties in camelCase and their associated values.
 			_getAllStyles = function(t, cs) {
 				var s = {},
-					i, tr;
+					i, tr, p;
 				if ((cs = cs || _getComputedStyle(t, null))) {
 					if ((i = cs.length)) {
 						while (--i > -1) {
-							s[cs[i].replace(_camelExp, _camelFunc)] = cs.getPropertyValue(cs[i]);
+							p = cs[i];
+							if (p.indexOf("-transform") === -1 || _transformPropCSS === p) { //Some webkit browsers duplicate transform values, one non-prefixed and one prefixed ("transform" and "WebkitTransform"), so we must weed out the extra one here.
+								s[p.replace(_camelExp, _camelFunc)] = cs.getPropertyValue(p);
+							}
 						}
-					} else { //Opera behaves differently - cs.length is always 0, so we must do a for...in loop.
+					} else { //some browsers behave differently - cs.length is always 0, so we must do a for...in loop.
 						for (i in cs) {
-							s[i] = cs[i];
+							if (i.indexOf("Transform") === -1 || _transformProp === i) { //Some webkit browsers duplicate transform values, one non-prefixed and one prefixed ("transform" and "WebkitTransform"), so we must weed out the extra one here.
+								s[i] = cs[i];
+							}
 						}
 					}
 				} else if ((cs = t.currentStyle || t.style)) {
@@ -297,7 +306,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					x = (v.indexOf("left") !== -1) ? "0%" : (v.indexOf("right") !== -1) ? "100%" : a[0],
 					y = (v.indexOf("top") !== -1) ? "0%" : (v.indexOf("bottom") !== -1) ? "100%" : a[1];
 				if (y == null) {
-					y = "0";
+					y = (x === "center") ? "50%" : "0";
 				} else if (y === "center") {
 					y = "50%";
 				}
@@ -332,7 +341,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			 * @return {number} Parsed value
 			 */
 			_parseVal = function(v, d) {
-				return (v == null) ? d : (typeof(v) === "string" && v.charAt(1) === "=") ? parseInt(v.charAt(0) + "1", 10) * Number(v.substr(2)) + d : parseFloat(v);
+				return (v == null) ? d : (typeof(v) === "string" && v.charAt(1) === "=") ? parseInt(v.charAt(0) + "1", 10) * parseFloat(v.substr(2)) + d : parseFloat(v);
 			},
 
 			/**
@@ -345,7 +354,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			 */
 			_parseAngle = function(v, d, p, directionalEnd) {
 				var min = 0.000001,
-					cap, split, dif, result;
+					cap, split, dif, result, isRelative;
 				if (v == null) {
 					result = d;
 				} else if (typeof(v) === "number") {
@@ -353,7 +362,8 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 				} else {
 					cap = 360;
 					split = v.split("_");
-					dif = Number(split[0].replace(_NaNExp, "")) * ((v.indexOf("rad") === -1) ? 1 : _RAD2DEG) - ((v.charAt(1) === "=") ? 0 : d);
+					isRelative = (v.charAt(1) === "=");
+					dif = (isRelative ? parseInt(v.charAt(0) + "1", 10) * parseFloat(split[0].substr(2)) : parseFloat(split[0])) * ((v.indexOf("rad") === -1) ? 1 : _RAD2DEG) - (isRelative ? 0 : d);
 					if (split.length) {
 						if (directionalEnd) {
 							directionalEnd[p] = d + dif;
@@ -409,7 +419,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			 * @param {(string|number)} v The value the should be parsed which could be a string like #9F0 or rgb(255,102,51) or rgba(255,0,0,0.5) or it could be a number like 0xFF00CC or even a named color like red, blue, purple, etc.
 			 * @return {Array.<number>} An array containing red, green, and blue (and optionally alpha) in that order.
 			 */
-			_parseColor = function(v) {
+			_parseColor = CSSPlugin.parseColor = function(v) {
 				var c1, c2, c3, h, s, l;
 				if (!v || v === "") {
 					return _colorLookup.black;
@@ -763,7 +773,6 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					bv = ba[i];
 					ev = ea[i];
 					bn = parseFloat(bv);
-
 					//if the value begins with a number (most common). It's fine if it has a suffix like px
 					if (bn || bn === 0) {
 						pt.appendXtra("", bn, _parseChange(ev, bn), ev.replace(_relNumExp, ""), (autoRound && ev.indexOf("px") !== -1), true);
@@ -933,7 +942,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 				if (!_specialProps[p]) {
 					var pluginName = p.charAt(0).toUpperCase() + p.substr(1) + "Plugin";
 					_registerComplexSpecialProp(p, {parser:function(t, e, p, cssp, pt, plugin, vars) {
-						var pluginClass = (_gsScope.GreenSockGlobals || _gsScope).com.greensock.plugins[pluginName];
+						var pluginClass = _globals.com.greensock.plugins[pluginName];
 						if (!pluginClass) {
 							_log("Error: " + pluginName + " js file not loaded.");
 							return pt;
@@ -977,8 +986,11 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 						bi = b.indexOf(kwd);
 						ei = e.indexOf(kwd);
 						if (bi !== ei) {
-							e = (ei === -1) ? ea : ba;
-							e[i] += " " + kwd;
+							if (ei === -1) { //if the keyword isn't in the end value, remove it from the beginning one.
+								ba[i] = ba[i].split(kwd).join("");
+							} else if (bi === -1) { //if the keyword isn't in the beginning, add it.
+								ba[i] += " " + kwd;
+							}
 						}
 					}
 				}
@@ -1045,16 +1057,58 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 
 
 
-
-
 		//transform-related methods and properties
+		CSSPlugin.useSVGTransformAttr = _isSafari; //Safari has some rendering bugs when applying CSS transforms to SVG elements, so default to using the "transform" attribute instead.
 		var _transformProps = ("scaleX,scaleY,scaleZ,x,y,z,skewX,skewY,rotation,rotationX,rotationY,perspective,xPercent,yPercent").split(","),
 			_transformProp = _checkPropPrefix("transform"), //the Javascript (camelCase) transform property, like msTransform, WebkitTransform, MozTransform, or OTransform.
 			_transformPropCSS = _prefixCSS + "transform",
 			_transformOriginProp = _checkPropPrefix("transformOrigin"),
 			_supports3D = (_checkPropPrefix("perspective") !== null),
 			Transform = _internals.Transform = function() {
-				this.skewY = 0;
+				this.perspective = parseFloat(CSSPlugin.defaultTransformPerspective) || 0;
+				this.force3D = (CSSPlugin.defaultForce3D === false || !_supports3D) ? false : CSSPlugin.defaultForce3D || "auto";
+			},
+			_SVGElement = window.SVGElement,
+			_useSVGTransformAttr,
+			//Some browsers (like Firefox and IE) don't honor transform-origin properly in SVG elements, so we need to manually adjust the matrix accordingly. We feature detect here rather than always doing the conversion for certain browsers because they may fix the problem at some point in the future.
+
+			_createSVG = function(type, container, attributes) {
+				var element = _doc.createElementNS("http://www.w3.org/2000/svg", type),
+					reg = /([a-z])([A-Z])/g,
+					p;
+				for (p in attributes) {
+					element.setAttributeNS(null, p.replace(reg, "$1-$2").toLowerCase(), attributes[p]);
+				}
+				container.appendChild(element);
+				return element;
+			},
+			_docElement = _doc.documentElement,
+			_forceSVGTransformAttr = (function() {
+				//IE and Android stock don't support CSS transforms on SVG elements, so we must write them to the "transform" attribute. We populate this variable in the _parseTransform() method, and only if/when we come across an SVG element
+				var force = _ieVers || (/Android/i.test(_agent) && !window.chrome),
+					svg, rect, width;
+				if (_doc.createElementNS && !force) { //IE8 and earlier doesn't support SVG anyway
+					svg = _createSVG("svg", _docElement);
+					rect = _createSVG("rect", svg, {width:100, height:50, x:100});
+					width = rect.getBoundingClientRect().width;
+					rect.style[_transformOriginProp] = "50% 50%";
+					rect.style[_transformProp] = "scaleX(0.5)";
+					force = (width === rect.getBoundingClientRect().width && !(_isFirefox && _supports3D)); //note: Firefox fails the test even though it does support CSS transforms in 3D. Since we can't push 3D stuff into the transform attribute, we force Firefox to pass the test here (as long as it does truly support 3D).
+					_docElement.removeChild(svg);
+				}
+				return force;
+			})(),
+			_parseSVGOrigin = function(e, local, decoratee, absolute) {
+				var bbox, v;
+				if (!absolute || !(v = absolute.split(" ")).length) {
+					bbox = e.getBBox();
+					local = _parsePosition(local).split(" ");
+					v = [(local[0].indexOf("%") !== -1 ? parseFloat(local[0]) / 100 * bbox.width : parseFloat(local[0])) + bbox.x,
+						 (local[1].indexOf("%") !== -1 ? parseFloat(local[1]) / 100 * bbox.height : parseFloat(local[1])) + bbox.y];
+				}
+				decoratee.xOrigin = parseFloat(v[0]);
+				decoratee.yOrigin = parseFloat(v[1]);
+				e.setAttribute("data-svg-origin", v.join(" "));
 			},
 
 			/**
@@ -1073,10 +1127,9 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					invX = (tm.scaleX < 0), //in order to interpret things properly, we need to know if the user applied a negative scaleX previously so that we can adjust the rotation and skewX accordingly. Otherwise, if we always interpret a flipped matrix as affecting scaleY and the user only wants to tween the scaleX on multiple sequential tweens, it would keep the negative scaleY without that being the user's intent.
 					min = 0.00002,
 					rnd = 100000,
-					minAngle = 179.99,
-					minPI = minAngle * _DEG2RAD,
 					zOrigin = _supports3D ? parseFloat(_getStyle(t, _transformOriginProp, cs, false, "0 0 0").split(" ")[2]) || tm.zOrigin  || 0 : 0,
-					s, m, i, n, dec, scaleX, scaleY, rotation, skewX, difX, difY, difR, difS;
+					defaultTransformPerspective = parseFloat(CSSPlugin.defaultTransformPerspective) || 0,
+					isDefault, s, m, i, n, dec, scaleX, scaleY, rotation, skewX;
 				if (_transformProp) {
 					s = _getStyle(t, _transformPropCSS, cs, true);
 				} else if (t.currentStyle) {
@@ -1084,9 +1137,22 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					s = t.currentStyle.filter.match(_ieGetMatrixExp);
 					s = (s && s.length === 4) ? [s[0].substr(4), Number(s[2].substr(4)), Number(s[1].substr(4)), s[3].substr(4), (tm.x || 0), (tm.y || 0)].join(",") : "";
 				}
-				if (!s || s === "none" || s === "matrix(1, 0, 0, 1, 0, 0)") { //if no transforms are applied, just use the defaults to optimize performance (no need to parse).
-					tm = {x:0, y:0, z:0, scaleX:1, scaleY:1, scaleZ:1, skewX:0, perspective:0, rotation:0, rotationX:0, rotationY:0, zOrigin:0};
-				} else {
+				isDefault = (!s || s === "none" || s === "matrix(1, 0, 0, 1, 0, 0)");
+				tm.svg = !!(_SVGElement && typeof(t.getBBox) === "function" && t.getCTM && (!t.parentNode || (t.parentNode.getBBox && t.parentNode.getCTM))); //don't just rely on "instanceof _SVGElement" because if the SVG is embedded via an object tag, it won't work (SVGElement is mapped to a different object)
+				if (tm.svg) {
+					if (isDefault && (t.style[_transformProp] + "").indexOf("matrix") !== -1) { //some browsers (like Chrome 40) don't correctly report transforms that are applied inline on an SVG element (they don't get included in the computed style), so we double-check here and accept matrix values
+						s = t.style[_transformProp];
+						isDefault = false;
+					}
+					_parseSVGOrigin(t, _getStyle(t, _transformOriginProp, _cs, false, "50% 50%") + "", tm, t.getAttribute("data-svg-origin"));
+					_useSVGTransformAttr = CSSPlugin.useSVGTransformAttr || _forceSVGTransformAttr;
+					m = t.getAttribute("transform");
+					if (isDefault && m && m.indexOf("matrix") !== -1) { //just in case there's a "transform" value specified as an attribute instead of CSS style. Only accept a matrix, though.
+						s = m;
+						isDefault = 0;
+					}
+				}
+				if (!isDefault) {
 					//split the matrix values out into an array (m for matrix)
 					m = (s || "").match(/(?:\-|\b)[\d\-\.e]+\b/gi) || [];
 					i = m.length;
@@ -1095,10 +1161,14 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 						m[i] = (dec = n - (n |= 0)) ? ((dec * rnd + (dec < 0 ? -0.5 : 0.5)) | 0) / rnd + n : n; //convert strings to Numbers and round to 5 decimal places to avoid issues with tiny numbers. Roughly 20x faster than Number.toFixed(). We also must make sure to round before dividing so that values like 0.9999999999 become 1 to avoid glitches in browser rendering and interpretation of flipped/rotated 3D matrices. And don't just multiply the number by rnd, floor it, and then divide by rnd because the bitwise operations max out at a 32-bit signed integer, thus it could get clipped at a relatively low value (like 22,000.00000 for example).
 					}
 					if (m.length === 16) {
-
 						//we'll only look at these position-related 6 variables first because if x/y/z all match, it's relatively safe to assume we don't need to re-parse everything which risks losing important rotational information (like rotationX:180 plus rotationY:180 would look the same as rotation:180 - there's no way to know for sure which direction was taken based solely on the matrix3d() values)
-						var a13 = m[8], a23 = m[9], a33 = m[10],
-							a14 = m[12], a24 = m[13], a34 = m[14];
+						var a11 = m[0], a21 = m[1], a31 = m[2], a41 = m[3],
+							a12 = m[4], a22 = m[5], a32 = m[6], a42 = m[7],
+							a13 = m[8], a23 = m[9], a33 = m[10],
+							a14 = m[12], a24 = m[13], a34 = m[14],
+							a43 = m[11],
+							angle = Math.atan2(a32, a33),
+							t1, t2, t3, t4, cos, sin;
 
 						//we manually compensate for non-zero z component of transformOrigin to work around bugs in Safari
 						if (tm.zOrigin) {
@@ -1107,78 +1177,67 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 							a24 = a23*a34-m[13];
 							a34 = a33*a34+tm.zOrigin-m[14];
 						}
+						tm.rotationX = angle * _RAD2DEG;
+						//rotationX
+						if (angle) {
+							cos = Math.cos(-angle);
+							sin = Math.sin(-angle);
+							t1 = a12*cos+a13*sin;
+							t2 = a22*cos+a23*sin;
+							t3 = a32*cos+a33*sin;
+							a13 = a12*-sin+a13*cos;
+							a23 = a22*-sin+a23*cos;
+							a33 = a32*-sin+a33*cos;
+							a43 = a42*-sin+a43*cos;
+							a12 = t1;
+							a22 = t2;
+							a32 = t3;
+						}
+						//rotationY
+						angle = Math.atan2(a13, a33);
+						tm.rotationY = angle * _RAD2DEG;
+						if (angle) {
+							cos = Math.cos(-angle);
+							sin = Math.sin(-angle);
+							t1 = a11*cos-a13*sin;
+							t2 = a21*cos-a23*sin;
+							t3 = a31*cos-a33*sin;
+							a23 = a21*sin+a23*cos;
+							a33 = a31*sin+a33*cos;
+							a43 = a41*sin+a43*cos;
+							a11 = t1;
+							a21 = t2;
+							a31 = t3;
+						}
+						//rotationZ
+						angle = Math.atan2(a21, a11);
+						tm.rotation = angle * _RAD2DEG;
+						if (angle) {
+							cos = Math.cos(-angle);
+							sin = Math.sin(-angle);
+							a11 = a11*cos+a12*sin;
+							t2 = a21*cos+a22*sin;
+							a22 = a21*-sin+a22*cos;
+							a32 = a31*-sin+a32*cos;
+							a21 = t2;
+						}
 
-						//only parse from the matrix if we MUST because not only is it usually unnecessary due to the fact that we store the values in the _gsTransform object, but also because it's impossible to accurately interpret rotationX, rotationY, rotationZ, scaleX, and scaleY if all are applied, so it's much better to rely on what we store. However, we must parse the first time that an object is tweened. We also assume that if the position has changed, the user must have done some styling changes outside of CSSPlugin, thus we force a parse in that scenario.
-						if (!rec || parse || tm.rotationX == null) {
-							var a11 = m[0], a21 = m[1], a31 = m[2], a41 = m[3],
-								a12 = m[4], a22 = m[5], a32 = m[6], a42 = m[7],
-								a43 = m[11],
-								angle = Math.atan2(a32, a33),
-								xFlip = (angle < -minPI || angle > minPI),
-								t1, t2, t3, cos, sin, yFlip, zFlip;
-							tm.rotationX = angle * _RAD2DEG;
-							//rotationX
-							if (angle) {
-								cos = Math.cos(-angle);
-								sin = Math.sin(-angle);
-								t1 = a12*cos+a13*sin;
-								t2 = a22*cos+a23*sin;
-								t3 = a32*cos+a33*sin;
-								a13 = a12*-sin+a13*cos;
-								a23 = a22*-sin+a23*cos;
-								a33 = a32*-sin+a33*cos;
-								a43 = a42*-sin+a43*cos;
-								a12 = t1;
-								a22 = t2;
-								a32 = t3;
-							}
-							//rotationY
-							angle = Math.atan2(a13, a11);
-							tm.rotationY = angle * _RAD2DEG;
-							if (angle) {
-								yFlip = (angle < -minPI || angle > minPI);
-								cos = Math.cos(-angle);
-								sin = Math.sin(-angle);
-								t1 = a11*cos-a13*sin;
-								t2 = a21*cos-a23*sin;
-								t3 = a31*cos-a33*sin;
-								a23 = a21*sin+a23*cos;
-								a33 = a31*sin+a33*cos;
-								a43 = a41*sin+a43*cos;
-								a11 = t1;
-								a21 = t2;
-								a31 = t3;
-							}
-							//rotationZ
-							angle = Math.atan2(a21, a22);
-							tm.rotation = angle * _RAD2DEG;
-							if (angle) {
-								zFlip = (angle < -minPI || angle > minPI);
-								cos = Math.cos(-angle);
-								sin = Math.sin(-angle);
-								a11 = a11*cos+a12*sin;
-								t2 = a21*cos+a22*sin;
-								a22 = a21*-sin+a22*cos;
-								a32 = a31*-sin+a32*cos;
-								a21 = t2;
-							}
+						if (tm.rotationX && Math.abs(tm.rotationX) + Math.abs(tm.rotation) > 359.9) { //when rotationY is set, it will often be parsed as 180 degrees different than it should be, and rotationX and rotation both being 180 (it looks the same), so we adjust for that here.
+							tm.rotationX = tm.rotation = 0;
+							tm.rotationY += 180;
+						}
 
-							if (zFlip && xFlip) {
-								tm.rotation = tm.rotationX = 0;
-							} else if (zFlip && yFlip) {
-								tm.rotation = tm.rotationY = 0;
-							} else if (yFlip && xFlip) {
-								tm.rotationY = tm.rotationX = 0;
-							}
-
-							tm.scaleX = ((Math.sqrt(a11 * a11 + a21 * a21) * rnd + 0.5) | 0) / rnd;
-							tm.scaleY = ((Math.sqrt(a22 * a22 + a23 * a23) * rnd + 0.5) | 0) / rnd;
-							tm.scaleZ = ((Math.sqrt(a32 * a32 + a33 * a33) * rnd + 0.5) | 0) / rnd;
-							tm.skewX = 0;
-							tm.perspective = a43 ? 1 / ((a43 < 0) ? -a43 : a43) : 0;
-							tm.x = a14;
-							tm.y = a24;
-							tm.z = a34;
+						tm.scaleX = ((Math.sqrt(a11 * a11 + a21 * a21) * rnd + 0.5) | 0) / rnd;
+						tm.scaleY = ((Math.sqrt(a22 * a22 + a23 * a23) * rnd + 0.5) | 0) / rnd;
+						tm.scaleZ = ((Math.sqrt(a32 * a32 + a33 * a33) * rnd + 0.5) | 0) / rnd;
+						tm.skewX = 0;
+						tm.perspective = a43 ? 1 / ((a43 < 0) ? -a43 : a43) : 0;
+						tm.x = a14;
+						tm.y = a24;
+						tm.z = a34;
+						if (tm.svg) {
+							tm.x -= tm.xOrigin - (tm.xOrigin * a11 - tm.yOrigin * a12);
+							tm.y -= tm.yOrigin - (tm.yOrigin * a21 - tm.xOrigin * a22);
 						}
 
 					} else if ((!_supports3D || parse || !m.length || tm.x !== m[4] || tm.y !== m[5] || (!tm.rotationX && !tm.rotationY)) && !(tm.x !== undefined && _getStyle(t, "display", cs) === "none")) { //sometimes a 6-element matrix is returned even when we performed 3D transforms, like if rotationX and rotationY are 180. In cases like this, we still need to honor the 3D transforms. If we just rely on the 2D info, it could affect how the data is interpreted, like scaleY might get set to -1 or rotation could get offset by 180 degrees. For example, do a TweenLite.to(element, 1, {css:{rotationX:180, rotationY:180}}) and then later, TweenLite.to(element, 1, {css:{rotationX:0}}) and without this conditional logic in place, it'd jump to a state of being unrotated when the 2nd tween starts. Then again, we need to honor the fact that the user COULD alter the transforms outside of CSSPlugin, like by manually applying new css, so we try to sense that by looking at x and y because if those changed, we know the changes were made outside CSSPlugin and we force a reinterpretation of the matrix values. Also, in Webkit browsers, if the element's "display" is "none", its calculated style value will always return empty, so if we've already recorded the values in the _gsTransform object, we'll just rely on those.
@@ -1193,8 +1252,6 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 						scaleY = Math.sqrt(d * d + c * c);
 						rotation = (a || b) ? Math.atan2(b, a) * _RAD2DEG : tm.rotation || 0; //note: if scaleX is 0, we cannot accurately measure rotation. Same for skewX with a scaleY of 0. Therefore, we default to the previously recorded value (or zero if that doesn't exist).
 						skewX = (c || d) ? Math.atan2(c, d) * _RAD2DEG + rotation : tm.skewX || 0;
-						difX = scaleX - Math.abs(tm.scaleX || 0);
-						difY = scaleY - Math.abs(tm.scaleY || 0);
 						if (Math.abs(skewX) > 90 && Math.abs(skewX) < 270) {
 							if (invX) {
 								scaleX *= -1;
@@ -1205,23 +1262,21 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 								skewX += (skewX <= 0) ? 180 : -180;
 							}
 						}
-						difR = (rotation - tm.rotation) % 180; //note: matching ranges would be very small (+/-0.0001) or very close to 180.
-						difS = (skewX - tm.skewX) % 180;
-						//if there's already a recorded _gsTransform in place for the target, we should leave those values in place unless we know things changed for sure (beyond a super small amount). This gets around ambiguous interpretations, like if scaleX and scaleY are both -1, the matrix would be the same as if the rotation was 180 with normal scaleX/scaleY. If the user tweened to particular values, those must be prioritized to ensure animation is consistent.
-						if (tm.skewX === undefined || difX > min || difX < -min || difY > min || difY < -min || (difR > -minAngle && difR < minAngle && (difR * rnd) | 0 !== 0) || (difS > -minAngle && difS < minAngle && (difS * rnd) | 0 !== 0)) {
-							tm.scaleX = scaleX;
-							tm.scaleY = scaleY;
-							tm.rotation = rotation;
-							tm.skewX = skewX;
-						}
+						tm.scaleX = scaleX;
+						tm.scaleY = scaleY;
+						tm.rotation = rotation;
+						tm.skewX = skewX;
 						if (_supports3D) {
 							tm.rotationX = tm.rotationY = tm.z = 0;
-							tm.perspective = parseFloat(CSSPlugin.defaultTransformPerspective) || 0;
+							tm.perspective = defaultTransformPerspective;
 							tm.scaleZ = 1;
+						}
+						if (tm.svg) {
+							tm.x -= tm.xOrigin - (tm.xOrigin * a - tm.yOrigin * b);
+							tm.y -= tm.yOrigin - (tm.yOrigin * d - tm.xOrigin * c);
 						}
 					}
 					tm.zOrigin = zOrigin;
-
 					//some browsers have a hard time with very small values like 2.4492935982947064e-16 (notice the "e-" towards the end) and would render the object slightly off. So we round to 0 in these cases. The conditional logic here is faster than calling Math.abs(). Also, browsers tend to render a SLIGHTLY rotated object in a fuzzy way, so we need to snap to exactly 0 when appropriate.
 					for (i in tm) {
 						if (tm[i] < min) if (tm[i] > -min) {
@@ -1229,11 +1284,17 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 						}
 					}
 				}
-				//DEBUG: _log("parsed rotation: "+(tm.rotationX)+", "+(tm.rotationY)+", "+(tm.rotation)+", scale: "+tm.scaleX+", "+tm.scaleY+", "+tm.scaleZ+", position: "+tm.x+", "+tm.y+", "+tm.z+", perspective: "+tm.perspective);
+				//DEBUG: _log("parsed rotation of " + t.getAttribute("id")+": "+(tm.rotationX)+", "+(tm.rotationY)+", "+(tm.rotation)+", scale: "+tm.scaleX+", "+tm.scaleY+", "+tm.scaleZ+", position: "+tm.x+", "+tm.y+", "+tm.z+", perspective: "+tm.perspective);
 				if (rec) {
 					t._gsTransform = tm; //record to the object's _gsTransform which we use so that tweens can control individual properties independently (we need all the properties to accurately recompose the matrix in the setRatio() method)
+					if (tm.svg) { //if we're supposed to apply transforms to the SVG element's "transform" attribute, make sure there aren't any CSS transforms applied or they'll override the attribute ones. Also clear the transform attribute if we're using CSS, just to be clean.
+						if (_useSVGTransformAttr && t.style[_transformProp]) {
+							_removeProp(t.style, _transformProp);
+						} else if (!_useSVGTransformAttr && t.getAttribute("transform")) {
+							t.removeAttribute("transform");
+						}
+					}
 				}
-				tm.xPercent = tm.yPercent = 0;
 				return tm;
 			},
 
@@ -1316,6 +1377,14 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 				}
 			},
 
+			/* translates a super small decimal to a string WITHOUT scientific notation
+			_safeDecimal = function(n) {
+				var s = (n < 0 ? -n : n) + "",
+					a = s.split("e-");
+				return (n < 0 ? "-0." : "0.") + new Array(parseInt(a[1], 10) || 0).join("0") + a[0].split(".").join("");
+			},
+			*/
+
 			_set3DTransformRatio = _internals.set3DTransformRatio = function(v) {
 				var t = this.data, //refers to the element's _gsTransform object
 					style = this.t.style,
@@ -1327,18 +1396,18 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					y = t.y,
 					z = t.z,
 					perspective = t.perspective,
-					a11, a12, a13, a14,	a21, a22, a23, a24, a31, a32, a33, a34,	a41, a42, a43,
-					zOrigin, rnd, cos, sin, t1, t2, t3, t4;
-				if (v === 1 || v === 0) if (t.force3D === "auto") if (!t.rotationY && !t.rotationX && sz === 1 && !perspective && !z) { //on the final render (which could be 0 for a from tween), if there are no 3D aspects, render in 2D to free up memory and improve performance especially on mobile devices
+					a11, a12, a13, a21, a22, a23, a31, a32, a33, a41, a42, a43,
+					zOrigin, min, cos, sin, t1, t2, transform, comma, zero;
+				if (v === 1 || v === 0 || !t.force3D) if (t.force3D !== true) if (!t.rotationY && !t.rotationX && sz === 1 && !perspective && !z && (this.tween._totalTime === this.tween._totalDuration || !this.tween._totalTime)) { //on the final render (which could be 0 for a from tween), if there are no 3D aspects, render in 2D to free up memory and improve performance especially on mobile devices. Check the tween's totalTime/totalDuration too in order to make sure it doesn't happen between repeats if it's a repeating tween.
 					_set2DTransformRatio.call(this, v);
 					return;
 				}
 				if (_isFirefox) {
-					var n = 0.0001;
-					if (sx < n && sx > -n) { //Firefox has a bug (at least in v25) that causes it to render the transparent part of 32-bit PNG images as black when displayed inside an iframe and the 3D scale is very small and doesn't change sufficiently enough between renders (like if you use a Power4.easeInOut to scale from 0 to 1 where the beginning values only change a tiny amount to begin the tween before accelerating). In this case, we force the scale to be 0.00002 instead which is visually the same but works around the Firefox issue.
+					min = 0.0001;
+					if (sx < min && sx > -min) { //Firefox has a bug (at least in v25) that causes it to render the transparent part of 32-bit PNG images as black when displayed inside an iframe and the 3D scale is very small and doesn't change sufficiently enough between renders (like if you use a Power4.easeInOut to scale from 0 to 1 where the beginning values only change a tiny amount to begin the tween before accelerating). In this case, we force the scale to be 0.00002 instead which is visually the same but works around the Firefox issue.
 						sx = sz = 0.00002;
 					}
-					if (sy < n && sy > -n) {
+					if (sy < min && sy > -min) {
 						sy = sz = 0.00002;
 					}
 					if (perspective && !t.z && !t.rotationX && !t.rotationY) { //Firefox has a bug that causes elements to have an odd super-thin, broken/dotted black border on elements that have a perspective set but aren't utilizing 3D space (no rotationX, rotationY, or z).
@@ -1346,10 +1415,8 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					}
 				}
 				if (angle || t.skewX) {
-					cos = Math.cos(angle);
-					sin = Math.sin(angle);
-					a11 = cos;
-					a21 = sin;
+					cos = a11 = Math.cos(angle);
+					sin = a21 = Math.sin(angle);
 					if (t.skewX) {
 						angle -= t.skewX * _DEG2RAD;
 						cos = Math.cos(angle);
@@ -1364,27 +1431,49 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					a12 = -sin;
 					a22 = cos;
 
-				} else if (!t.rotationY && !t.rotationX && sz === 1 && !perspective) { //if we're only translating and/or 2D scaling, this is faster...
+				} else if (!t.rotationY && !t.rotationX && sz === 1 && !perspective && !t.svg) { //if we're only translating and/or 2D scaling, this is faster...
 					style[_transformProp] = ((t.xPercent || t.yPercent) ? "translate(" + t.xPercent + "%," + t.yPercent + "%) translate3d(" : "translate3d(") + x + "px," + y + "px," + z +"px)" + ((sx !== 1 || sy !== 1) ? " scale(" + sx + "," + sy + ")" : "");
 					return;
 				} else {
 					a11 = a22 = 1;
 					a12 = a21 = 0;
 				}
+				// KEY  INDEX   AFFECTS
+				// a11  0       rotation, rotationY, scaleX
+				// a21  1       rotation, rotationY, scaleX
+				// a31  2       rotationY, scaleX
+				// a41  3       rotationY, scaleX
+				// a12  4       rotation, skewX, rotationX, scaleY
+				// a22  5       rotation, skewX, rotationX, scaleY
+				// a32  6       rotationX, scaleY
+				// a42  7       rotationX, scaleY
+				// a13  8       rotationY, rotationX, scaleZ
+				// a23  9       rotationY, rotationX, scaleZ
+				// a33  10      rotationY, rotationX, scaleZ
+				// a43  11      rotationY, rotationX, perspective, scaleZ
+				// a14  12      x, zOrigin, svgOrigin
+				// a24  13      y, zOrigin, svgOrigin
+				// a34  14      z, zOrigin
+				// a44  15
+				// rotation: Math.atan2(a21, a11)
+				// rotationY: Math.atan2(a13, a33) (or Math.atan2(a13, a11))
+				// rotationX: Math.atan2(a32, a33)
 				a33 = 1;
-				a13 = a14 = a23 = a24 = a31 = a32 = a34 = a41 = a42 = 0;
+				a13 = a23 = a31 = a32 = a41 = a42 = 0;
 				a43 = (perspective) ? -1 / perspective : 0;
 				zOrigin = t.zOrigin;
-				rnd = 100000;
+				min = 0.000001; //threshold below which browsers use scientific notation which won't work.
+				comma = ",";
+				zero = "0";
 				angle = t.rotationY * _DEG2RAD;
 				if (angle) {
 					cos = Math.cos(angle);
 					sin = Math.sin(angle);
-					a31 = a33*-sin;
+					a31 = -sin;
 					a41 = a43*-sin;
 					a13 = a11*sin;
 					a23 = a21*sin;
-					a33 *= cos;
+					a33 = cos;
 					a43 *= cos;
 					a11 *= cos;
 					a21 *= cos;
@@ -1395,16 +1484,14 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					sin = Math.sin(angle);
 					t1 = a12*cos+a13*sin;
 					t2 = a22*cos+a23*sin;
-					t3 = a32*cos+a33*sin;
-					t4 = a42*cos+a43*sin;
+					a32 = a33*sin;
+					a42 = a43*sin;
 					a13 = a12*-sin+a13*cos;
 					a23 = a22*-sin+a23*cos;
-					a33 = a32*-sin+a33*cos;
-					a43 = a42*-sin+a43*cos;
+					a33 = a33*cos;
+					a43 = a43*cos;
 					a12 = t1;
 					a22 = t2;
-					a32 = t3;
-					a42 = t4;
 				}
 				if (sz !== 1) {
 					a13*=sz;
@@ -1424,17 +1511,41 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					a31*=sx;
 					a41*=sx;
 				}
-				if (zOrigin) {
-					a34 -= zOrigin;
-					a14 = a13*a34;
-					a24 = a23*a34;
-					a34 = a33*a34+zOrigin;
+
+				if (zOrigin || t.svg) {
+					if (zOrigin) {
+						x += a13*-zOrigin;
+						y += a23*-zOrigin;
+						z += a33*-zOrigin+zOrigin;
+					}
+					if (t.svg) { //due to bugs in some browsers, we need to manage the transform-origin of SVG manually
+						x += t.xOrigin - (t.xOrigin * a11 + t.yOrigin * a12);
+						y += t.yOrigin - (t.xOrigin * a21 + t.yOrigin * a22);
+					}
+					if (x < min && x > -min) {
+						x = zero;
+					}
+					if (y < min && y > -min) {
+						y = zero;
+					}
+					if (z < min && z > -min) {
+						z = 0; //don't use string because we calculate perspective later and need the number.
+					}
 				}
-				//we round the x, y, and z slightly differently to allow even larger values.
-				a14 = (t1 = (a14 += x) - (a14 |= 0)) ? ((t1 * rnd + (t1 < 0 ? -0.5 : 0.5)) | 0) / rnd + a14 : a14;
-				a24 = (t1 = (a24 += y) - (a24 |= 0)) ? ((t1 * rnd + (t1 < 0 ? -0.5 : 0.5)) | 0) / rnd + a24 : a24;
-				a34 = (t1 = (a34 += z) - (a34 |= 0)) ? ((t1 * rnd + (t1 < 0 ? -0.5 : 0.5)) | 0) / rnd + a34 : a34;
-				style[_transformProp] = ((t.xPercent || t.yPercent) ? "translate(" + t.xPercent + "%," + t.yPercent + "%) matrix3d(" : "matrix3d(") + [ (((a11 * rnd) | 0) / rnd), (((a21 * rnd) | 0) / rnd), (((a31 * rnd) | 0) / rnd), (((a41 * rnd) | 0) / rnd), (((a12 * rnd) | 0) / rnd), (((a22 * rnd) | 0) / rnd), (((a32 * rnd) | 0) / rnd), (((a42 * rnd) | 0) / rnd), (((a13 * rnd) | 0) / rnd), (((a23 * rnd) | 0) / rnd), (((a33 * rnd) | 0) / rnd), (((a43 * rnd) | 0) / rnd), a14, a24, a34, (perspective ? (1 + (-a34 / perspective)) : 1) ].join(",") + ")";
+
+				//optimized way of concatenating all the values into a string. If we do it all in one shot, it's slower because of the way browsers have to create temp strings and the way it affects memory. If we do it piece-by-piece with +=, it's a bit slower too. We found that doing it in these sized chunks works best overall:
+				transform = ((t.xPercent || t.yPercent) ? "translate(" + t.xPercent + "%," + t.yPercent + "%) matrix3d(" : "matrix3d(");
+				transform += ((a11 < min && a11 > -min) ? zero : a11) + comma + ((a21 < min && a21 > -min) ? zero : a21) + comma + ((a31 < min && a31 > -min) ? zero : a31);
+				transform += comma + ((a41 < min && a41 > -min) ? zero : a41) + comma + ((a12 < min && a12 > -min) ? zero : a12) + comma + ((a22 < min && a22 > -min) ? zero : a22);
+				if (t.rotationX || t.rotationY) { //performance optimization (often there's no rotationX or rotationY, so we can skip these calculations)
+					transform += comma + ((a32 < min && a32 > -min) ? zero : a32) + comma + ((a42 < min && a42 > -min) ? zero : a42) + comma + ((a13 < min && a13 > -min) ? zero : a13);
+					transform += comma + ((a23 < min && a23 > -min) ? zero : a23) + comma + ((a33 < min && a33 > -min) ? zero : a33) + comma + ((a43 < min && a43 > -min) ? zero : a43) + comma;
+				} else {
+					transform += ",0,0,0,0,1,0,";
+				}
+				transform += x + comma + y + comma + z + comma + (perspective ? (1 + (-z / perspective)) : 1) + ")";
+
+				style[_transformProp] = transform;
 			},
 
 			_set2DTransformRatio = _internals.set2DTransformRatio = function(v) {
@@ -1443,29 +1554,58 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					style = targ.style,
 					x = t.x,
 					y = t.y,
-					prefix = "",
-					ang, skew, rnd, sx, sy;
-				if (t.rotationX || t.rotationY || t.z || t.force3D === true || (t.force3D === "auto" && v !== 1 && v !== 0)) { //if a 3D tween begins while a 2D one is running, we need to kick the rendering over to the 3D method. For example, imagine a yoyo-ing, infinitely repeating scale tween running, and then the object gets rotated in 3D space with a different tween.
+					ang, skew, rnd, sx, sy, a, b, c, d, matrix, min, t1;
+				if ((t.rotationX || t.rotationY || t.z || t.force3D === true || (t.force3D === "auto" && v !== 1 && v !== 0)) && !(t.svg && _useSVGTransformAttr) && _supports3D) { //if a 3D tween begins while a 2D one is running, we need to kick the rendering over to the 3D method. For example, imagine a yoyo-ing, infinitely repeating scale tween running, and then the object gets rotated in 3D space with a different tween.
 					this.setRatio = _set3DTransformRatio;
 					_set3DTransformRatio.call(this, v);
 					return;
 				}
-
-				if (!t.rotation && !t.skewX) {
-					style[_transformProp] = ((t.xPercent || t.yPercent) ? "translate(" + t.xPercent + "%," + t.yPercent + "%) matrix(" : "matrix(") + t.scaleX + ",0,0," + t.scaleY + "," + x + "," + y + ")";
-				} else {
+				sx = t.scaleX;
+				sy = t.scaleY;
+				if (t.rotation || t.skewX || t.svg) {
 					ang = t.rotation * _DEG2RAD;
-					skew = ang - t.skewX * _DEG2RAD;
+					skew = t.skewX * _DEG2RAD;
 					rnd = 100000;
-					sx = t.scaleX * rnd;
-					sy = t.scaleY * rnd;
-					//some browsers have a hard time with very small values like 2.4492935982947064e-16 (notice the "e-" towards the end) and would render the object slightly off. So we round to 5 decimal places.
-					style[_transformProp] = ((t.xPercent || t.yPercent) ? "translate(" + t.xPercent + "%," + t.yPercent + "%) matrix(" : "matrix(") + (((Math.cos(ang) * sx) | 0) / rnd) + "," + (((Math.sin(ang) * sx) | 0) / rnd) + "," + (((Math.sin(skew) * -sy) | 0) / rnd) + "," + (((Math.cos(skew) * sy) | 0) / rnd) + "," + x + "," + y + ")";
+					a = Math.cos(ang) * sx;
+					b = Math.sin(ang) * sx;
+					c = Math.sin(ang - skew) * -sy;
+					d = Math.cos(ang - skew) * sy;
+					if (skew && t.skewType === "simple") { //by default, we compensate skewing on the other axis to make it look more natural, but you can set the skewType to "simple" to use the uncompensated skewing that CSS does
+						t1 = Math.tan(skew);
+						t1 = Math.sqrt(1 + t1 * t1);
+						c *= t1;
+						d *= t1;
+					}
+					if (t.svg) {
+						x += t.xOrigin - (t.xOrigin * a + t.yOrigin * c);
+						y += t.yOrigin - (t.xOrigin * b + t.yOrigin * d);
+						min = 0.000001;
+						if (x < min) if (x > -min) {
+							x = 0;
+						}
+						if (y < min) if (y > -min) {
+							y = 0;
+						}
+					}
+					matrix = (((a * rnd) | 0) / rnd) + "," + (((b * rnd) | 0) / rnd) + "," + (((c * rnd) | 0) / rnd) + "," + (((d * rnd) | 0) / rnd) + "," + x + "," + y + ")";
+					if (t.svg && _useSVGTransformAttr) {
+						targ.setAttribute("transform", "matrix(" + matrix);
+					} else {
+						//some browsers have a hard time with very small values like 2.4492935982947064e-16 (notice the "e-" towards the end) and would render the object slightly off. So we round to 5 decimal places.
+						style[_transformProp] = ((t.xPercent || t.yPercent) ? "translate(" + t.xPercent + "%," + t.yPercent + "%) matrix(" : "matrix(") + matrix;
+					}
+				} else {
+					style[_transformProp] = ((t.xPercent || t.yPercent) ? "translate(" + t.xPercent + "%," + t.yPercent + "%) matrix(" : "matrix(") + sx + ",0,0," + sy + "," + x + "," + y + ")";
 				}
 			};
 
-		_registerComplexSpecialProp("transform,scale,scaleX,scaleY,scaleZ,x,y,z,rotation,rotationX,rotationY,rotationZ,skewX,skewY,shortRotation,shortRotationX,shortRotationY,shortRotationZ,transformOrigin,transformPerspective,directionalRotation,parseTransform,force3D,skewType,xPercent,yPercent", {parser:function(t, e, p, cssp, pt, plugin, vars) {
-			if (cssp._transform) { return pt; } //only need to parse the transform once, and only if the browser supports it.
+		p = Transform.prototype;
+		p.x = p.y = p.z = p.skewX = p.skewY = p.rotation = p.rotationX = p.rotationY = p.zOrigin = p.xPercent = p.yPercent = 0;
+		p.scaleX = p.scaleY = p.scaleZ = 1;
+
+		_registerComplexSpecialProp("transform,scale,scaleX,scaleY,scaleZ,x,y,z,rotation,rotationX,rotationY,rotationZ,skewX,skewY,shortRotation,shortRotationX,shortRotationY,shortRotationZ,transformOrigin,svgOrigin,transformPerspective,directionalRotation,parseTransform,force3D,skewType,xPercent,yPercent", {parser:function(t, e, p, cssp, pt, plugin, vars) {
+			if (cssp._lastParsedTransform === vars) { return pt; } //only need to parse the transform once, and only if the browser supports it.
+			cssp._lastParsedTransform = vars;
 			var m1 = cssp._transform = _getTransform(t, _cs, true, vars.parseTransform),
 				style = t.style,
 				min = 0.000001,
@@ -1524,7 +1664,6 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					m2.rotation += skewY;
 				}
 			}
-
 			if (_supports3D && v.force3D != null) {
 				m1.force3D = v.force3D;
 				hasChange = true;
@@ -1540,7 +1679,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			while (--i > -1) {
 				p = _transformProps[i];
 				orig = m2[p] - m1[p];
-				if (orig > min || orig < -min || _forcePT[p] != null) {
+				if (orig > min || orig < -min || v[p] != null || _forcePT[p] != null) {
 					hasChange = true;
 					pt = new CSSPropTween(m1, p, m1[p], orig, pt);
 					if (p in endRotations) {
@@ -1553,6 +1692,16 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			}
 
 			orig = v.transformOrigin;
+			if (m1.svg && (orig || v.svgOrigin)) {
+				_parseSVGOrigin(t, _parsePosition(orig), m2, v.svgOrigin);
+				pt = new CSSPropTween(m1, "xOrigin", m1.xOrigin, m2.xOrigin - m1.xOrigin, pt, -1, "transformOrigin");
+				pt.b = m1.xOrigin;
+				pt.e = pt.xs0 = m2.xOrigin;
+				pt = new CSSPropTween(m1, "yOrigin", m1.yOrigin, m2.yOrigin - m1.yOrigin, pt, -1, "transformOrigin");
+				pt.b = m1.yOrigin;
+				pt.e = pt.xs0 = m2.yOrigin;
+				orig = _useSVGTransformAttr ? null : "0px 0px"; //certain browsers (like firefox) completely botch transform-origin, so we must remove it to prevent it from contaminating transforms. We manage it ourselves with xOrigin and yOrigin
+			}
 			if (orig || (_supports3D && has3D && m1.zOrigin)) { //if anything 3D is happening and there's a transformOrigin with a z component that's non-zero, we must ensure that the transformOrigin's z-component is set to 0 so that we can manually do those calculations to get around Safari bugs. Even if the user didn't specifically define a "transformOrigin" in this particular tween (maybe they did it via css directly).
 				if (_transformProp) {
 					hasChange = true;
@@ -1578,9 +1727,8 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					_parsePosition(orig + "", m1);
 				}
 			}
-
 			if (hasChange) {
-				cssp._transformType = (has3D || this._transformType === 3) ? 3 : 2; //quicker than calling cssp._enableTransforms();
+				cssp._transformType = (!(m1.svg && _useSVGTransformAttr) && (has3D || this._transformType === 3)) ? 3 : 2; //quicker than calling cssp._enableTransforms();
 			}
 			return pt;
 		}, prefix:true});
@@ -1655,7 +1803,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 				if (src && src !== "none") {
 					ba = bs.split(" ");
 					ea = es.split(" ");
-					_tempImg.setAttribute("src", src); //set the temp <img>'s src to the background-image so that we can measure its width/height
+					_tempImg.setAttribute("src", src); //set the temp IMG's src to the background-image so that we can measure its width/height
 					i = 2;
 					while (--i > -1) {
 						bs = ba[i];
@@ -1709,7 +1857,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 		//opacity-related
 		var _setIEOpacityRatio = function(v) {
 				var t = this.t, //refers to the element's style property
-					filters = t.filter || _getStyle(this.data, "filter"),
+					filters = t.filter || _getStyle(this.data, "filter") || "",
 					val = (this.s + this.c * v) | 0,
 					skip;
 				if (val === 100) { //for older versions of IE that need to use a filter to apply opacity, we should remove the filter if opacity hits 1 in order to improve performance, but make sure there isn't a transform (matrix) or gradient in the filters.
@@ -1770,8 +1918,8 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 		var _removeProp = function(s, p) {
 				if (p) {
 					if (s.removeProperty) {
-						if (p.substr(0,2) === "ms") { //Microsoft browsers don't conform to the standard of capping the first prefix character, so we adjust so that when we prefix the caps with a dash, it's correct (otherwise it'd be "ms-transform" instead of "-ms-transform" for IE9, for example)
-							p = "M" + p.substr(1);
+						if (p.substr(0,2) === "ms" || p.substr(0,6) === "webkit") { //Microsoft and some Webkit browsers don't conform to the standard of capitalizing the first prefix character, so we adjust so that when we prefix the caps with a dash, it's correct (otherwise it'd be "ms-transform" instead of "-ms-transform" for IE9, for example)
+							p = "-" + p;
 						}
 						s.removeProperty(p.replace(_capsExp, "-$1").toLowerCase());
 					} else { //note: old versions of IE use "removeAttribute()" instead of "removeProperty()"
@@ -1844,7 +1992,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 					s.cssText = "";
 					clearTransform = true;
 				} else {
-					a = this.e.split(",");
+					a = this.e.split(" ").join("").split(",");
 					i = a.length;
 					while (--i > -1) {
 						p = a[i];
@@ -1891,7 +2039,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 
 
 		p = CSSPlugin.prototype;
-		p._firstPT = null;
+		p._firstPT = p._lastParsedTransform = p._transform = null;
 
 		//gets called when the tween renders for the first time. This kicks everything off, recording start/end values, etc.
 		p._onInitTween = function(target, vars, tween) {
@@ -1959,6 +2107,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 				this._linkCSSP(tpt, null, pt2);
 				tpt.setRatio = (threeD && _supports3D) ? _set3DTransformRatio : _transformProp ? _set2DTransformRatio : _setIETransformRatio;
 				tpt.data = this._transform || _getTransform(target, _cs, true);
+				tpt.tween = tween;
 				_overwriteProps.pop(); //we don't want to force the overwrite of all "transform" tweens of the target - we only care about individual transform properties like scaleX, rotation, etc. The CSSPropTween constructor automatically adds the property to _overwriteProps which is why we need to pop() here.
 			}
 
@@ -2035,7 +2184,7 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 							esfx = es.replace(_suffixExp, "");
 						} else {
 							en = parseFloat(es);
-							esfx = isStr ? es.substr((en + "").length) || "" : "";
+							esfx = isStr ? es.replace(_suffixExp, "") : "";
 						}
 
 						if (esfx === "") {
@@ -2096,7 +2245,6 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 			var pt = this._firstPT,
 				min = 0.000001,
 				val, str, i;
-
 			//at the end of the tween, we set the values to exactly what we received in order to make sure non-tweening values (like "position" or "float" or whatever) are set and so that if the beginning/ending suffixes (units) didn't match and we normalized to px, the value that the user passed in is used here. We check to see if the tween is at its beginning in case it's a from() tween in which case the ratio will actually go from 1 to 0 over the course of the tween (backwards).
 			if (v === 1 && (this._tween._time === this._tween._duration || this._tween._time === 0)) {
 				while (pt) {
@@ -2170,8 +2318,8 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 		 * @param {boolean} threeD if true, it should apply 3D tweens (otherwise, just 2D ones are fine and typically faster)
 		 */
 		p._enableTransforms = function(threeD) {
-			this._transformType = (threeD || this._transformType === 3) ? 3 : 2;
 			this._transform = this._transform || _getTransform(this._target, _cs, true); //ensures that the element has a _gsTransform property with the appropriate values.
+			this._transformType = (!(this._transform.svg && _useSVGTransformAttr) && (threeD || this._transformType === 3)) ? 3 : 2;
 		};
 
 		var lazySet = function(v) {
@@ -2295,12 +2443,12 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 				e = [],
 				targets = [],
 				_reservedProps = TweenLite._internals.reservedProps,
-				i, difs, p;
+				i, difs, p, from;
 			target = tween._targets || tween.target;
 			_getChildStyles(target, b, targets);
-			tween.render(duration, true);
+			tween.render(duration, true, true);
 			_getChildStyles(target, e);
-			tween.render(0, true);
+			tween.render(0, true, true);
 			tween._enabled(true);
 			i = targets.length;
 			while (--i > -1) {
@@ -2312,7 +2460,11 @@ var _gsScope = (typeof(module) !== "undefined" && module.exports && typeof(globa
 							difs[p] = vars[p];
 						}
 					}
-					results.push( TweenLite.to(targets[i], duration, difs) );
+					from = {};
+					for (p in difs) {
+						from[p] = b[i][p];
+					}
+					results.push(TweenLite.fromTo(targets[i], duration, from, difs));
 				}
 			}
 			return results;

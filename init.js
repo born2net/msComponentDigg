@@ -27,7 +27,11 @@ require.config({
         'MailWasp': '_controllers/MailWasp',
         'EverNodes': '_controllers/EverNodes',
         'StackView': '_views/StackView',
-        'AppAuth': '_controllers/AppAuth'
+        'AppAuth': '_controllers/AppAuth',
+        'TimelineMax': '_common/_js/gsap/TimelineMax',
+        'TweenMax': '_common/_js/gsap/TweenMax',
+        'TweenLite': '_common/_js/gsap/TweenLite',
+        'ScrollToPlugin': '_common/_js/gsap/plugins/ScrollToPlugin'
     },
 
     shim: {
@@ -40,6 +44,9 @@ require.config({
         },
         'LayoutRouter': {
             deps: ['Elements', 'backbone.controller']
+        },
+        'ScrollToPlugin': {
+            exports: 'ScrollToPlugin'
         },
         'underscore': {
             exports: '_'

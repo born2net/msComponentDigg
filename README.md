@@ -1,10 +1,10 @@
-Digg.com
+Digg.com for SignagePlayer
 ====================================
-digitalsignage.com open source component
+part of the family of open source SignagePlayer components designed to play in the SignagePlayer as specified in the modified GNU V3 modified license.
 
-The Digg component is powered by the red pepper SDK and runs inside the SignagePlayer
+About
 -----------------------------------------------------------------------------------------
-
+The Digg component is powered by the red pepper SDK and runs inside the SignagePlayer
 ...
 
 License:
