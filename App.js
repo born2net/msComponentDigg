@@ -64,6 +64,7 @@ define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 
 
 
             $.get('https://secure.digitalsignage.com/Digg', function (data) {
+                $('#loadingDigg').fadeOut();
                 var half = Math.round(_.size(data) / 2);
                 var i = 0;
                 var $win = $(window);
