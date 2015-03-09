@@ -4,7 +4,7 @@ powered by http://www.DigitalSignage.com
 
 About
 -----------------------------------------------------------------------------------------
-The Digg component is powered by the red pepper SDK and runs inside the SignagePlayer
+The Digg component is powered by the red pepper SDK and runs inside the SignagePlayer.
 It is part of the family of open source SignagePlayer components designed to play in the SignagePlayer as specified in the modified GNU V3 modified license.
 
 Links:
