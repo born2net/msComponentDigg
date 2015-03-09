@@ -6,6 +6,8 @@ require.config({
     waitSeconds: 25,
     baseUrl: '/components/digg/',
     paths: {
+        'Elements': 'Elements',
+        'Consts': 'Consts',
         'jquery': '_common/_jquery/std/jq1.9.1/jquery-1.9.1',
         'backbone': '_common/_js/backbone/backbone',
         'text': '_common/_js/requirejs/text',
@@ -22,13 +24,8 @@ require.config({
         'simplestorage': '_common/_js/simplestorage/simpleStorage',
         'underscore': '_common/_js/underscore/underscore',
         'bootstrap': '_common/_js/bootstrap/js/bootstrap',
-        'Elements': 'Elements',
         'localizer': '_common/_js/localizer/dist/jquery.localize',
-        'LayoutRouter': '_controllers/LayoutRouter',
-        'MailWasp': '_controllers/MailWasp',
-        'EverNodes': '_controllers/EverNodes',
         'StackView': '_views/StackView',
-        'AppAuth': '_controllers/AppAuth',
         'TimelineMax': '_common/_js/gsap/TimelineMax',
         'TweenMax': '_common/_js/gsap/TweenMax',
         'TweenLite': '_common/_js/gsap/TweenLite',
@@ -43,6 +40,9 @@ require.config({
         'backbone': {
             deps: ['underscore', 'jquery'],
             exports: 'Backbone'
+        },
+        'Consts': {
+            deps: ['backbone']
         },
         'backbone.controller': {
             deps: ['underscore', 'jquery']

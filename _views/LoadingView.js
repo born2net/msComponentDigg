@@ -26,8 +26,7 @@ define(['jquery', 'backbone'], function ($, Backbone) {
         initialize: function () {
             var self = this;
             self.collection.on('add', function(){
-                console.log('Collection data added');
-                BB.comBroker.getService('APP_STACK_VIEW').selectView(Elements.DIGG_CONTAINER);
+                BB.comBroker.getService(BB.EVENTS.APP_STACK_VIEW).selectView(Elements.DIGG_CONTAINER);
                 self.collection.off('add');
             });
         }
