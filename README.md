@@ -1,4 +1,4 @@
-SignagePlayer compoennt: Digg.com
+SignagePlayer component: Digg.com
 ====================================
 powered by http://www.DigitalSignage.com
 
