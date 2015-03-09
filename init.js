@@ -1,5 +1,5 @@
 /**
- Require js initialization module definition file for StudioLite
+ Require js initialization module definition file for SignagePlayer component
  @class Require init js
  **/
 require.config({

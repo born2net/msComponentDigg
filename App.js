@@ -1,6 +1,7 @@
 /**
  App MediaSignage Inc (c) open source digital signage project.
- Visit Github for license and docs: http://git.digitalsignage.com
+ Visit GitHub for more info https://github.com/born2net/msComponentDigg
+ License: GNU V3 modified to be used in digitalsignage.com's mediaCLOUD
  @class App
  @constructor
  @return {Object} instantiated App

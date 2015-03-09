@@ -16,6 +16,10 @@ define(['jquery', 'backbone', 'DiggModel'], function ($, Backbone, DiggModel) {
             var self = this;
         },
 
+        /**
+         Fetch the collection data from server
+         @method getData
+         **/
         getData: function(){
             var self = this;
             self.fetch({
