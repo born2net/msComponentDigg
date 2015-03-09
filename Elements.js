@@ -1,8 +1,8 @@
 // elements
-Elements.APP_ENTRY = '#appEntry';
-
-// messages
-Elements.MSG_BOOTBOX_SAVE_REMOTE_SRV = '#bootBoxSaveRemoteSrv';
+Elements.DIGGS_P1 = '#diggsP1';
+Elements.DIGGS_P2 = '#diggsP2';
+Elements.DIGG_CONTAINER = '#diggContainer';
+Elements.LOADING_CONTAINER ='#loadingContainer';
 
 // templates
 Elements.LANGUAGE_SELECTOR_TEMPLATE = '#languageSelector';

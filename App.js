@@ -5,7 +5,7 @@
  @constructor
  @return {Object} instantiated App
  **/
-define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 'ComBroker', 'Lib', 'TweenLite', 'ScrollToPlugin', 'visibility', 'text!_templates/_diggEntry.html'], function (_, $, Backbone, Bootstrap, backbonecontroller, ComBroker, Lib, TweenLite, ScrollToPlugin, visibility, diggEntry) {
+define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 'ComBroker', 'Lib', 'TweenLite', 'ScrollToPlugin', 'Elements', 'DiggView', 'LoadingView', 'text!_templates/_diggEntry.html'], function (_, $, Backbone, Bootstrap, backbonecontroller, ComBroker, Lib, TweenLite, ScrollToPlugin, Elements, DiggView, LoadingView, diggEntry) {
     var App = Backbone.Controller.extend({
 
         // app init
@@ -17,6 +17,7 @@ define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 
             BB.EVENTS = {};
             BB.LOADING = {};
             BB.CONSTS = {};
+            BB.SCROLL_SPEED = 10;
             BB.globs['UNIQUE_COUNTER'] = 0;
             BB.globs['RC4KEY'] = '226a3a42f34ddd778ed2c3ba56644315';
             BB.lib = new Lib();
@@ -25,23 +26,20 @@ define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 
             BB.comBroker.name = 'AppBroker';
             window.log = BB.lib.log;
             self.m_skip = false;
-            self.m_times = 0;
             self.m_scrollPosition = 0;
             $.ajaxSetup({cache: false});
             $.ajaxSetup({
                 headers: {'Authorization': 'somePasswordHere'}
             });
 
-            _.templateSettings = {
-                interpolate: /\{\{(.+?)\}\}/g
-            };
-
+            _.templateSettings = {interpolate: /\{\{(.+?)\}\}/g};
             self.m_diggEntry = _.template(diggEntry);
-
             self._loadPosts();
 
-            // internationalization
+            self._initViews();
+
             /*
+             // internationalization
              require(['localizer'], function () {
              var lang = "en";
              var opts = { language: lang, pathPrefix: "./_lang" };
@@ -58,6 +56,76 @@ define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 
              */
         },
 
+        _initViews: function () {
+            var self = this;
+            // internationalization
+            require(['StackView', 'DiggCollection'], function (StackView, DiggCollection) {
+
+                self.m_stackView = new StackView.Fader({duration: 333});
+                BB.comBroker.setService('APP_STACK_VIEW', self.m_stackView);
+
+                self.m_diggCollection = new DiggCollection();
+
+
+                self.m_loadingView = new LoadingView({
+                    el: Elements.LOADING_CONTAINER,
+                    collection: self.m_diggCollection
+                });
+
+                self.m_diggView = new DiggView({
+                    el: Elements.DIGG_CONTAINER,
+                    collection: self.m_diggCollection
+                });
+
+                self.m_stackView.addView(self.m_loadingView);
+                self.m_stackView.addView(self.m_diggView);
+                self.m_stackView.selectView(self.m_loadingView);
+
+                self.m_diggCollection.getData();
+            });
+        },
+
+        /**
+         Every interval scroll page, of no changes, we hit bottom
+         and scroll back to top
+         @method _scroll
+         **/
+        _scroll: function () {
+            var self = this;
+            var $win = $(window);
+            var times = 1;
+
+            setInterval(function () {
+                var currentPosition = $win.scrollTop();
+
+                // page @ top
+                if (currentPosition == 0) {
+                    self.m_skip = false;
+                    times = 1;
+                    self.m_scrollPosition = 0;
+                    return;
+                }
+
+                // no changes, page @ bottom
+                if (currentPosition == self.m_scrollPosition) {
+                    TweenLite.to(window, 2, {scrollTo: {y: 0}, ease: Power2.easeOut});
+                    self.m_skip = true;
+                    times = 1;
+                    self.m_scrollPosition = currentPosition;
+                    return;
+                }
+                self.m_scrollPosition = currentPosition;
+
+            }, 3000);
+
+            setInterval(function () {
+                if (self.m_skip)
+                    return;
+                TweenLite.to(window, 2, {scrollTo: {y: times}, ease: Power2.easeOut});
+                times = times + BB.SCROLL_SPEED;
+            }, 500);
+        },
+
         /**
          Load Digg posts
          @method _loadPosts
@@ -66,43 +134,14 @@ define(['underscore', 'jquery', 'backbone', 'bootstrap', 'backbone.controller', 
             var self = this;
 
             $.get('https://secure.digitalsignage.com/Digg', function (data) {
-                $('#loadingDigg').fadeOut();
                 var half = Math.round(_.size(data) / 2);
                 var i = 0;
-                var $win = $(window);
-                self.m_times = 1;
                 _.forEach(data, function (k) {
                     i++;
-                    var ele = (i > half) ? '#diggsP1' : '#diggsP2';
+                    var ele = (i > half) ? Elements.DIGGS_P1 : Elements.DIGGS_P2;
                     $(ele).append(self.m_diggEntry(k));
                 });
-
-                setInterval(function () {
-                    var currentPosition = $win.scrollTop();
-                    if (currentPosition == 0){
-                        self.m_skip = false;
-                        self.m_times = 1;
-                        self.m_scrollPosition = 0;
-                        return;
-                    }
-                    if (currentPosition == self.m_scrollPosition){
-                        TweenLite.to(window, 2, {scrollTo: {y: 0}, ease: Power2.easeOut});
-                        self.m_skip = true;
-                        self.m_times = 1;
-                        self.m_scrollPosition = currentPosition;
-                        return;
-                    }
-                    self.m_scrollPosition = currentPosition;
-                }, 3000);
-
-                setInterval(function () {
-                    if (self.m_skip)
-                        return;
-                    TweenLite.to(window, 2, {scrollTo: {y: self.m_times}, ease: Power2.easeOut});
-                    self.m_times = self.m_times + 10;
-                }, 700);
-
-
+                self._scroll();
             });
         }
     });

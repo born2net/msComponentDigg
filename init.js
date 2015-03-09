@@ -32,7 +32,11 @@ require.config({
         'TimelineMax': '_common/_js/gsap/TimelineMax',
         'TweenMax': '_common/_js/gsap/TweenMax',
         'TweenLite': '_common/_js/gsap/TweenLite',
-        'ScrollToPlugin': '_common/_js/gsap/plugins/ScrollToPlugin'
+        'ScrollToPlugin': '_common/_js/gsap/plugins/ScrollToPlugin',
+        'DiggView': '_views/DiggView',
+        'LoadingView': '_views/LoadingView',
+        'DiggModel': '_models/DiggModel',
+        'DiggCollection': '_collections/DiggCollection'
     },
 
     shim: {
