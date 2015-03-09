@@ -5,18 +5,6 @@
  @return {object} instantiated LoadingView
  **/
 define(['jquery', 'backbone'], function ($, Backbone) {
-
-    /**
-     Custom event fired when bar meter changed event
-     @event BAR_METER_CHANGED
-     @param {This} caller
-     @param {Self} context caller
-     @param {Event}
-     @static
-     @final
-     **/
-    // Backbone.EVENTS.BAR_METER_CHANGED = 'BAR_METER_CHANGED';
-
     var LoadingView = Backbone.View.extend({
 
         /**
@@ -25,12 +13,12 @@ define(['jquery', 'backbone'], function ($, Backbone) {
          **/
         initialize: function () {
             var self = this;
+            BB.comBroker.setService(BB.SERVICES.LOADING_VIEW,self);
             self.collection.on('add', function(){
                 BB.comBroker.getService(BB.EVENTS.APP_STACK_VIEW).selectView(Elements.DIGG_CONTAINER);
                 self.collection.off('add');
             });
         }
     });
-
     return LoadingView;
 });

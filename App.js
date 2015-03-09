@@ -25,19 +25,17 @@ define(['Consts', 'bootstrap', 'backbone.controller', 'ComBroker', 'Lib', 'Eleme
         },
 
         /**
-
+         Initialize the Backbone views of the application
          @method _initViews
          **/
         _initViews: function () {
             var self = this;
-            // internationalization
             require(['StackView', 'DiggCollection'], function (StackView, DiggCollection) {
 
                 self.m_stackView = new StackView.Fader({duration: 333});
                 BB.comBroker.setService(BB.EVENTS.APP_STACK_VIEW, self.m_stackView);
 
                 self.m_diggCollection = new DiggCollection();
-
 
                 self.m_loadingView = new LoadingView({
                     el: Elements.LOADING_CONTAINER,

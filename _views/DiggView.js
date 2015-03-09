@@ -15,6 +15,7 @@ define(['jquery', 'backbone', 'text!_templates/DiggArticle.html', 'TweenLite', '
          **/
         initialize: function () {
             var self = this;
+            BB.comBroker.setService(BB.SERVICES.DIGG_VIEW,self);
             self.m_skip = false;
             self.m_scrollPosition = 0;
             _.templateSettings = {interpolate: /\{\{(.+?)\}\}/g};
